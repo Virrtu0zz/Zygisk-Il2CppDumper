@@ -1,27 +1,87 @@
-name: Build
+name: Build Zygisk Il2CppDumper Module
+
 on:
   workflow_dispatch:
-      inputs:
-        package_name:
-          description: "Package name of the game:"
-          required: true
+    inputs:
+      package_name:
+        description: "Package name of the game"
+        required: true
+        default: "com.game.packagename"
+        type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-java@v3
+    # 1. Checkout repository
+    - name: Checkout code
+      uses: actions/checkout@v4  # Обновлено с v3
+      with:
+        fetch-depth: 0
+    
+    # 2. Setup Java
+    - name: Setup Java
+      uses: actions/setup-java@v4  # Обновлено с v3
       with:
         distribution: temurin
-        java-version: 11
+        java-version: '11'
         cache: gradle
-    - run: |
+        cache-dependency-path: '**/*.gradle*'
+    
+    # 3. Setup Android SDK (если нужно)
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    # 4. Modify configuration files
+    - name: Configure for target package
+      run: |
         chmod +x ./gradlew
-        sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
-        sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
-        ./gradlew :module:assembleRelease
-    - uses: actions/upload-artifact@v4
+        
+        # Backup original files
+        cp module.gradle module.gradle.bak
+        cp module/src/main/cpp/game.h module/src/main/cpp/game.h.bak
+        
+        # Replace package name in module.gradle
+        sed -i 's|moduleDescription = "|moduleDescription = "(${{ github.event.inputs.package_name }}) |g' module.gradle
+        
+        # Replace package name in game.h
+        sed -i "s|com.game.packagename|${{ github.event.inputs.package_name }}|g" module/src/main/cpp/game.h
+        
+        # Log changes for debugging
+        echo "Modified module.gradle:"
+        grep "moduleDescription" module.gradle
+        echo ""
+        echo "Modified game.h:"
+        grep "package_name" module/src/main/cpp/game.h || true
+    
+    # 5. Build the module
+    - name: Build module
+      run: ./gradlew :module:assembleRelease --no-daemon --stacktrace
+    
+    # 6. Upload artifact
+    - name: Upload Magisk module
+      uses: actions/upload-artifact@v4
       with:
-        name: zygisk-il2cppdumper
-        path: out/magisk_module_release/
+        name: zygisk-il2cppdumper-${{ github.event.inputs.package_name }}
+        path: |
+          out/magisk_module_release/**/*.zip
+          out/magisk_module_release/**/*.md
+        retention-days: 7
+        if-no-files-found: error
+        compression-level: 9
+    
+    # 7. (Опционально) Создать релиз
+    - name: Create Release
+      if: github.event_name == 'workflow_dispatch' && success()
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: build-${{ github.run_id }}
+        name: Build for ${{ github.event.inputs.package_name }}
+        body: |
+          Zygisk Il2CppDumper module built for package: **${{ github.event.inputs.package_name }}**
+          
+          Built on: ${{ github.run_created_at }}
+          Commit: ${{ github.sha }}
+        draft: false
+        prerelease: false
+        files: out/magisk_module_release/**/*.zip
