@@ -62,26 +62,6 @@ jobs:
     - name: Upload Magisk module
       uses: actions/upload-artifact@v4
       with:
-        name: zygisk-il2cppdumper-${{ github.event.inputs.package_name }}
-        path: |
-          out/magisk_module_release/**/*.zip
-          out/magisk_module_release/**/*.md
-        retention-days: 7
-        if-no-files-found: error
-        compression-level: 9
-    
-    # 7. (Опционально) Создать релиз
-    - name: Create Release
-      if: github.event_name == 'workflow_dispatch' && success()
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: build-${{ github.run_id }}
-        name: Build for ${{ github.event.inputs.package_name }}
-        body: |
-          Zygisk Il2CppDumper module built for package: **${{ github.event.inputs.package_name }}**
-          
-          Built on: ${{ github.run_created_at }}
-          Commit: ${{ github.sha }}
-        draft: false
-        prerelease: false
-        files: out/magisk_module_release/**/*.zip
+        name: zygisk-il2cppdumper
+        path: out/magisk_module_release/
+
