@@ -1,87 +1,62 @@
-name: Build Zygisk Il2CppDumper Module
-
+name: Build Zygisk Module
 on:
   workflow_dispatch:
     inputs:
       package_name:
-        description: "Package name of the game"
+        description: "Package name of the game:"
         required: true
         default: "com.ty.aapk"
-        type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    # 1. Checkout repository
-    - name: Checkout code
-      uses: actions/checkout@v4  # Обновлено с v3
-      with:
-        fetch-depth: 0
+    - uses: actions/checkout@v4
     
-    # 2. Setup Java
-    - name: Setup Java
-      uses: actions/setup-java@v4  # Обновлено с v3
+    # Решение: Использовать JDK 17
+    - uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: '11'
+        java-version: 17  # Изменили с 11 на 17
         cache: gradle
-        cache-dependency-path: '**/*.gradle*'
     
-    # 3. Setup Android SDK (если нужно)
-    - name: Setup Android SDK
+    # Упрощенная установка Android SDK
+    - name: Setup Android NDK
       uses: android-actions/setup-android@v3
+      with:
+        # Указать только NDK (без полного SDK)
+        ndk-version: '26.1.10909125'
+        # Пропустить проверку JDK
+        env:
+          SKIP_JDK_VERSION_CHECK: 1
     
-    # 4. Modify configuration files
-    - name: Configure for target package
+    - name: Configure and Build
       run: |
         chmod +x ./gradlew
         
-        # Backup original files
-        cp module.gradle module.gradle.bak
-        cp module/src/main/cpp/game.h module/src/main/cpp/game.h.bak
+        # Создать backup оригинальных файлов
+        cp module.gradle module.gradle.backup || true
+        cp module/src/main/cpp/game.h module/src/main/cpp/game.h.backup || true
         
-        # Replace package name in module.gradle
-        sed -i 's|moduleDescription = "|moduleDescription = "(${{ github.event.inputs.package_name }}) |g' module.gradle
+        # Заменить package name
+        sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
+        sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
         
-        # Replace package name in game.h
-        sed -i "s|com.game.packagename|${{ github.event.inputs.package_name }}|g" module/src/main/cpp/game.h
-        
-        # Log changes for debugging
-        echo "Modified module.gradle:"
+        # Проверить изменения
+        echo "Module.gradle изменения:"
         grep "moduleDescription" module.gradle
-        echo ""
-        echo "Modified game.h:"
-        grep "package_name" module/src/main/cpp/game.h || true
+        
+        echo "Game.h изменения:"
+        grep "${{ github.event.inputs.package_name }}" module/src/main/cpp/game.h || true
+        
+        # Сборка
+        ./gradlew :module:assembleRelease \
+          --no-daemon \
+          --stacktrace \
+          -Pandroid.debug.obsoleteApi=true
     
-    # 5. Build the module
-    - name: Build module
-      run: ./gradlew :module:assembleRelease --no-daemon --stacktrace
-    
-    # 6. Upload artifact
-    - name: Upload Magisk module
-      uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v4
       with:
         name: zygisk-il2cppdumper-${{ github.event.inputs.package_name }}
-        path: |
-          out/magisk_module_release/**/*.zip
-          out/magisk_module_release/**/*.md
-        retention-days: 7
-        if-no-files-found: error
-        compression-level: 9
-    
-    # 7. (Опционально) Создать релиз
-    - name: Create Release
-      if: github.event_name == 'workflow_dispatch' && success()
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: build-${{ github.run_id }}
-        name: Build for ${{ github.event.inputs.package_name }}
-        body: |
-          Zygisk Il2CppDumper module built for package: **${{ github.event.inputs.package_name }}**
-          
-          Built on: ${{ github.run_created_at }}
-          Commit: ${{ github.sha }}
-        draft: false
-        prerelease: false
-        files: out/magisk_module_release/**/*.zip
+        path: out/magisk_module_release/
+        retention-days: 30
