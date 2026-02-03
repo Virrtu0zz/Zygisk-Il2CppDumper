@@ -6,7 +6,7 @@ on:
       package_name:
         description: "Package name of the game"
         required: true
-        default: "com.game.packagename"
+        default: "com.ty.aapk"
         type: string
 
 jobs:
