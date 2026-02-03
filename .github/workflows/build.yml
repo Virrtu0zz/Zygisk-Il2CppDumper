@@ -5,7 +5,7 @@ on:
       package_name:
         description: "Package name of the game:"
         required: true
-        default: "com.ty.aapk"
+        
 
 jobs:
   build:
